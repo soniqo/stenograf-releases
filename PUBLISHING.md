@@ -16,6 +16,10 @@ This repository is the public artifact destination. The application source and s
 
 A stable release needs a new marketing version, release notes, supported-platform artifacts and the corresponding server build admission. App update notices compare the marketing version: changing only `+build-metadata` does not prompt an update.
 
-The existing private release workflow signs artifacts but stores them in its private repository. A future automated publication step should upload only reviewed installers and manifests to this repository using a credential scoped to this destination. GitHub-hosted build jobs are currently blocked by account billing; restore that capacity or use a controlled signing runner before relying on fully automatic releases.
+The existing private release workflow signs artifacts but stores them in its private repository. A future automated publication step should upload only reviewed installers and manifests to this repository using a credential scoped to this destination. GitHub-hosted jobs in the private application repository are currently blocked by account billing; restore that capacity or use a controlled signing runner before relying on fully automatic releases.
 
 Keep signing credentials and provider secrets in the private build environment. Only installers, checksums, non-secret build metadata and release notes belong in this repository.
+
+## Recovering an interrupted upload
+
+The public repository's **Assemble verified installer** workflow can reconstruct an installer from small draft-release assets named `<installer>.part-000`, `<installer>.part-001`, and so on. Supply the draft tag, installer filename, expected part count and SHA-256 of the complete notarized installer. It waits for the parts, concatenates them in filename order, verifies the full checksum, uploads one normal DMG, and removes the temporary parts. It leaves publication to the operator. This public artifact job runs separately from the private signing/build workflow.
