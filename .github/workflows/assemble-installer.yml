@@ -8,6 +8,9 @@ on:
       artifact:
         description: Installer filename
         required: true
+      parts:
+        description: Expected transfer part count
+        required: true
       sha256:
         description: Reviewed notarized installer SHA-256
         required: true
@@ -22,6 +25,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RELEASE_TAG: ${{ inputs.tag }}
       ARTIFACT: ${{ inputs.artifact }}
+      EXPECTED_PARTS: ${{ inputs.parts }}
       EXPECTED_SHA: ${{ inputs.sha256 }}
     steps:
       - name: Validate inputs and draft status
@@ -29,8 +33,19 @@ jobs:
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^[a-zA-Z0-9][a-zA-Z0-9._+-]*$ ]]
           [[ "$ARTIFACT" =~ ^Stenograf_[a-zA-Z0-9._+-]+\.dmg$ ]]
+          [[ "$EXPECTED_PARTS" =~ ^[1-9][0-9]?$ ]]
           [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{64}$ ]]
           test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+      - name: Wait for transfer parts
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 100); do
+            count=$(gh release view "$RELEASE_TAG" --json assets | python3 -c 'import json,os,sys; print(sum(a["name"].startswith(os.environ["ARTIFACT"]+".part-") and a["state"]=="uploaded" for a in json.load(sys.stdin)["assets"]))')
+            if [ "$count" = "$EXPECTED_PARTS" ]; then exit 0; fi
+            sleep 6
+          done
+          echo 'Transfer is incomplete.' >&2
+          exit 1
       - name: Reassemble and verify
         run: |
           set -euo pipefail
