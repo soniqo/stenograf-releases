@@ -1,0 +1,53 @@
+name: Assemble verified installer
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Draft release tag
+        required: true
+      artifact:
+        description: Installer filename
+        required: true
+      sha256:
+        description: Reviewed notarized installer SHA-256
+        required: true
+permissions:
+  contents: write
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      ARTIFACT: ${{ inputs.artifact }}
+      EXPECTED_SHA: ${{ inputs.sha256 }}
+    steps:
+      - name: Validate inputs and draft status
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^[a-zA-Z0-9][a-zA-Z0-9._+-]*$ ]]
+          [[ "$ARTIFACT" =~ ^Stenograf_[a-zA-Z0-9._+-]+\.dmg$ ]]
+          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{64}$ ]]
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+      - name: Reassemble and verify
+        run: |
+          set -euo pipefail
+          mkdir installer
+          cd installer
+          gh release download "$RELEASE_TAG" --pattern "$ARTIFACT.part-*"
+          cat "$ARTIFACT".part-* > "$ARTIFACT"
+          printf '%s  %s\n' "$EXPECTED_SHA" "$ARTIFACT" | sha256sum --check -
+          gh release upload "$RELEASE_TAG" "$ARTIFACT" --clobber
+      - name: Remove transfer parts
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --json assets > assets.json
+          python3 - <<'PY'
+          import json, os, subprocess
+          prefix = os.environ['ARTIFACT'] + '.part-'
+          for asset in json.load(open('assets.json'))['assets']:
+              if asset['name'].startswith(prefix):
+                  subprocess.run(['gh', 'api', '--method', 'DELETE', asset['apiUrl']], check=True)
+          PY
